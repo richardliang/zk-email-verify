@@ -20,12 +20,12 @@ import { dkimVerify } from "../helpers/dkim";
 import * as fs from "fs";
 import { pki } from "node-forge";
 
-async function getArgs() {
+async function getArgs(email_file_name: string) {
   const args = process.argv.slice(2);
   const emailFileArg = args.find((arg) => arg.startsWith("--email_file="));
   const nonceArg = args.find((arg) => arg.startsWith("--nonce="));
 
-  const email_file = emailFileArg ? emailFileArg.split("=")[1] : "emls/zktestemail_twitter.eml";
+  const email_file = emailFileArg ? emailFileArg.split("=")[1] : `emls/${email_file_name}.eml`;
   const nonce = nonceArg ? nonceArg.split("=")[1] : null;
 
   return { email_file, nonce };
@@ -47,7 +47,9 @@ export interface ICircuitInputs {
   address?: string;
   address_plus_one?: string;
   twitter_username_idx?: string;
+  venmo_receive_id_idx?: string;
   email_from_idx?: string;
+  email_timestamp_idx?: string;
 
   // subject commands only
   command_idx?: string;
@@ -66,6 +68,7 @@ export enum CircuitType {
   SHA = "sha",
   TEST = "test",
   EMAIL_TWITTER = "email_twitter",
+  EMAIL_VENMO_RECEIVE = "email_venmo_receive",
   EMAIL_SUBJECT = "email_subject",
 }
 
@@ -120,6 +123,16 @@ export async function getCircuitInputs(
   circuitInputs: ICircuitInputs;
 }> {
   console.log("Starting processing of inputs");
+
+  let MAX_BODY_PADDED_BYTES_FOR_EMAIL_TYPE = MAX_BODY_PADDED_BYTES;
+  let STRING_PRESELECTOR_FOR_EMAIL_TYPE = STRING_PRESELECTOR;
+  
+  // Update preselector string based on circuit type
+  if (circuit === CircuitType.EMAIL_VENMO_RECEIVE) {
+    STRING_PRESELECTOR_FOR_EMAIL_TYPE = "<!-- actor name -->";
+    MAX_BODY_PADDED_BYTES_FOR_EMAIL_TYPE = 6400;
+  }
+
   // Derive modulus from signature
   // const modulusBigInt = bytesToBigInt(pubKeyParts[2]);
   const modulusBigInt = rsa_modulus;
@@ -137,7 +150,7 @@ export async function getCircuitInputs(
   // 65 comes from the 64 at the end and the 1 bit in the start, then 63 comes from the formula to round it up to the nearest 64. see sha256algorithm.com for a more full explanation of paddnig length
   const calc_length = Math.floor((body.length + 63 + 65) / 64) * 64;
   const [messagePadded, messagePaddedLen] = await sha256Pad(prehashBytesUnpadded, MAX_HEADER_PADDED_BYTES);
-  const [bodyPadded, bodyPaddedLen] = await sha256Pad(body, Math.max(MAX_BODY_PADDED_BYTES, calc_length));
+  const [bodyPadded, bodyPaddedLen] = await sha256Pad(body, Math.max(MAX_BODY_PADDED_BYTES_FOR_EMAIL_TYPE, calc_length));
 
   // Convet messagePadded to string to print the specific header data that is signed
   console.log(JSON.stringify(message).toString());
@@ -148,17 +161,17 @@ export async function getCircuitInputs(
   assert((await Uint8ArrayToString(shaOut)) === (await Uint8ArrayToString(Uint8Array.from(await shaHash(prehashBytesUnpadded)))), "SHA256 calculation did not match!");
 
   // Precompute SHA prefix
-  const selector = STRING_PRESELECTOR.split("").map((char) => char.charCodeAt(0));
+  const selector = STRING_PRESELECTOR_FOR_EMAIL_TYPE.split("").map((char) => char.charCodeAt(0));
   const selector_loc = await findSelector(bodyPadded, selector);
   console.log("Body selector found at: ", selector_loc);
   let shaCutoffIndex = Math.floor((await findSelector(bodyPadded, selector)) / 64) * 64;
   const precomputeText = bodyPadded.slice(0, shaCutoffIndex);
   let bodyRemaining = bodyPadded.slice(shaCutoffIndex);
   const bodyRemainingLen = bodyPaddedLen - precomputeText.length;
-  assert(bodyRemainingLen < MAX_BODY_PADDED_BYTES, "Invalid slice");
+  assert(bodyRemainingLen < MAX_BODY_PADDED_BYTES_FOR_EMAIL_TYPE, "Invalid slice");
   assert(bodyRemaining.length % 64 === 0, "Not going to be padded correctly with int64s");
-  bodyRemaining = padWithZero(bodyRemaining, MAX_BODY_PADDED_BYTES);
-  assert(bodyRemaining.length === MAX_BODY_PADDED_BYTES, "Invalid slice");
+  bodyRemaining = padWithZero(bodyRemaining, MAX_BODY_PADDED_BYTES_FOR_EMAIL_TYPE);
+  assert(bodyRemaining.length === MAX_BODY_PADDED_BYTES_FOR_EMAIL_TYPE, "Invalid slice");
   const bodyShaPrecompute = await partialSha(precomputeText, shaCutoffIndex);
 
   // Compute identity revealer
@@ -179,20 +192,41 @@ export async function getCircuitInputs(
   // bytesToBigInt(fromHex()).toString();
   const address_plus_one = (bytesToBigInt(fromHex(eth_address)) + 1n).toString();
 
-  const USERNAME_SELECTOR = Buffer.from(STRING_PRESELECTOR);
-
   let raw_header = Buffer.from(prehash_message_string).toString();
   const email_from_idx = raw_header.length - trimStrByStr(trimStrByStr(raw_header, "from:"), "<").length;
+  
   let email_subject = trimStrByStr(raw_header, "\r\nsubject:");
   //in javascript, give me a function that extracts the first word in a string, everything before the first space
-
+  
   if (circuit === CircuitType.RSA) {
     circuitInputs = {
       modulus,
       signature,
       base_message,
     };
+  } else if (circuit === CircuitType.EMAIL_VENMO_RECEIVE) {
+    const RECEIVE_ID_SELECTOR = Buffer.from(STRING_PRESELECTOR_FOR_EMAIL_TYPE);
+    const venmo_receive_id_idx = (Buffer.from(bodyRemaining).indexOf(RECEIVE_ID_SELECTOR) + RECEIVE_ID_SELECTOR.length).toString();
+    console.log("Indexes into for venmo receive email are: ", email_from_idx, venmo_receive_id_idx);
+    
+    const email_timestamp_idx = raw_header.length - trimStrByStr(raw_header, "t=").length;
+    circuitInputs = {
+      in_padded,
+      modulus,
+      signature,
+      in_len_padded_bytes,
+      precomputed_sha,
+      in_body_padded,
+      in_body_len_padded_bytes,
+      venmo_receive_id_idx,
+      address,
+      address_plus_one,
+      body_hash_idx,
+      email_timestamp_idx,
+      // email_from_idx,
+    };
   } else if (circuit === CircuitType.EMAIL_TWITTER) {
+    const USERNAME_SELECTOR = Buffer.from(STRING_PRESELECTOR_FOR_EMAIL_TYPE);
     const twitter_username_idx = (Buffer.from(bodyRemaining).indexOf(USERNAME_SELECTOR) + USERNAME_SELECTOR.length).toString();
     console.log("Indexes into header string are: ", email_from_idx, twitter_username_idx);
 
@@ -329,11 +363,11 @@ export async function insert13Before10(a: Uint8Array): Promise<Uint8Array> {
 
 // Only called when the whole function is called from the command line, to read inputs
 // Will generate a test proof with the empty Ethereum address, that cannot be proven by anybody else
-async function test_generate(writeToFile: boolean = true) {
-  const { email_file, nonce } = await getArgs();
+async function test_generate(writeToFile: boolean = true, email_file_name: string, type: CircuitType) {
+  const { email_file, nonce } = await getArgs(email_file_name);
   const email = fs.readFileSync(email_file.trim());
   console.log(email);
-  const gen_inputs = await generate_inputs(email, "0x0000000000000000000000000000000000000000", CircuitType.EMAIL_TWITTER, nonce);
+  const gen_inputs = await generate_inputs(email, "0x0000000000000000000000000000000000000000", type, nonce);
   console.log(JSON.stringify(gen_inputs));
   if (writeToFile) {
     const file_dir = email_file.substring(0, email_file.lastIndexOf("/") + 1);
@@ -346,5 +380,6 @@ async function test_generate(writeToFile: boolean = true) {
 
 // If file called directly with `npx tsx generate_inputs.ts`
 if (typeof require !== "undefined" && require.main === module) {
-  test_generate(true);
+  // Example usage: yarn gen-input venmo_receive_payment EMAIL_VENMO_RECEIVE
+  test_generate(true, process.argv[2], CircuitType[process.argv[3] as keyof typeof CircuitType]);
 }
