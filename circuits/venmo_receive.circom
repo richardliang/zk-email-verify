@@ -134,9 +134,9 @@ template VenmoReceiveEmail(max_header_bytes, max_body_bytes, n, k, pack_size, ex
     // // It doesn't have an impact on security since a user must have known the pre-image of a signed message to be able to fake it
     // // The lower two body signals describe the suffix of the body that we care about
     // // The part before these signals, a significant prefix of the body, has been pre-hashed into precomputed_sha.
-    // signal input precomputed_sha[32];
-    // signal input in_body_padded[max_body_bytes];
-    // signal input in_body_len_padded_bytes;
+    signal input precomputed_sha[32];
+    signal input in_body_padded[max_body_bytes];
+    signal input in_body_len_padded_bytes;
 
     // // This verifies that the hash of the body, when calculated from the precomputed part forwards,
     // // actually matches the hash in the header
@@ -157,7 +157,7 @@ template VenmoReceiveEmail(max_header_bytes, max_body_bytes, n, k, pack_size, ex
     // // Body reveal vars
     // var max_twitter_len = 21;
     // var max_twitter_packed_bytes = count_packed(max_twitter_len, pack_size); // ceil(max_num_bytes / 7)
-    // signal input twitter_username_idx;
+    signal input venmo_receive_id_idx;
     // signal output reveal_twitter_packed[max_twitter_packed_bytes];
 
     // // TWITTER REGEX: 328,044 constraints
@@ -183,4 +183,4 @@ template VenmoReceiveEmail(max_header_bytes, max_body_bytes, n, k, pack_size, ex
 // * pack_size = 7 is the number of bytes that can fit into a 255ish bit signal (can increase later)
 // * expose_from = 0 is whether to expose the from email address
 // * expose_to = 0 is whether to expose the to email (not recommended)
-component main { public [ modulus, address ] } = VenmoReceiveEmail(1024, 1536, 121, 17, 7, 0, 0);
+component main { public [ modulus, address ] } = VenmoReceiveEmail(1024, 6400, 121, 17, 7, 0, 0);

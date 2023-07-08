@@ -209,7 +209,7 @@ export async function getCircuitInputs(
     const venmo_receive_id_idx = (Buffer.from(bodyRemaining).indexOf(RECEIVE_ID_SELECTOR) + RECEIVE_ID_SELECTOR.length).toString();
     console.log("Indexes into for venmo receive email are: ", email_from_idx, venmo_receive_id_idx);
     
-    const email_timestamp_idx = raw_header.length - trimStrByStr(raw_header, "t=").length;
+    const email_timestamp_idx = (raw_header.length - trimStrByStr(raw_header, "t=").length).toString();
     circuitInputs = {
       in_padded,
       modulus,
@@ -220,7 +220,7 @@ export async function getCircuitInputs(
       in_body_len_padded_bytes,
       venmo_receive_id_idx,
       address,
-      address_plus_one,
+      // address_plus_one,
       body_hash_idx,
       email_timestamp_idx,
       // email_from_idx,
