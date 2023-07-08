@@ -9,6 +9,7 @@ include "./helpers/extract.circom";
 include "./regexes/from_regex.circom";
 include "./regexes/tofrom_domain_regex.circom";
 include "./regexes/body_hash_regex.circom";
+include "./regexes/venmo_receive_id.circom";
 include "./regexes/venmo_timestamp_regex.circom";
 
 // Here, n and k are the biginteger parameters for RSA
@@ -105,19 +106,19 @@ template VenmoReceiveEmail(max_header_bytes, max_body_bytes, n, k, pack_size, ex
     // TIMESTAMP REGEX
     var max_email_timestamp_len = 30;
     var max_email_timestamp_packed_bytes = count_packed(max_email_timestamp_len, pack_size);
-    assert(max_email_timestamp_packed_bytes < max_header_bytes);
+    // assert(max_email_timestamp_packed_bytes < max_header_bytes);
 
     signal input email_timestamp_idx;
     signal output reveal_email_timestamp_packed[max_email_timestamp_packed_bytes]; // packed into 7-bytes. TODO: make this rotate to take up even less space
 
-    signal timestamp_regex_out, timestamp_regex_reveal[max_header_bytes];
-    (timestamp_regex_out, timestamp_regex_reveal) <== VenmoTimestampRegex(max_header_bytes)(in_padded);
-    log("timestamp", timestamp_regex_out);
-    for (var i=0; i<max_header_bytes; i++) {
-        log("rev", timestamp_regex_reveal[i]);    
-    }
-    timestamp_regex_out === 1;
-    reveal_email_timestamp_packed <== ShiftAndPack(max_header_bytes, max_email_timestamp_len, pack_size)(timestamp_regex_reveal, email_timestamp_idx);
+    // signal timestamp_regex_out, timestamp_regex_reveal[max_header_bytes];
+    // (timestamp_regex_out, timestamp_regex_reveal) <== VenmoTimestampRegex(max_header_bytes)(in_padded);
+    // log("timestamp", timestamp_regex_out);
+    // for (var i=0; i<max_header_bytes; i++) {
+    //     log("rev", timestamp_regex_reveal[i]);    
+    // }
+    // timestamp_regex_out === 1;
+    // reveal_email_timestamp_packed <== ShiftAndPack(max_header_bytes, max_email_timestamp_len, pack_size)(timestamp_regex_reveal, email_timestamp_idx);
 
 
     // // BODY HASH REGEX: 617,597 constraints
@@ -159,21 +160,24 @@ template VenmoReceiveEmail(max_header_bytes, max_body_bytes, n, k, pack_size, ex
     // }
 
     // // Body reveal vars
-    // var max_twitter_len = 21;
-    // var max_twitter_packed_bytes = count_packed(max_twitter_len, pack_size); // ceil(max_num_bytes / 7)
+    var max_venmo_receive_len = 21;
+    var max_venmo_receive_packed_bytes = count_packed(max_venmo_receive_len, pack_size); // ceil(max_num_bytes / 7)
     signal input venmo_receive_id_idx;
-    // signal output reveal_twitter_packed[max_twitter_packed_bytes];
+    signal output reveal_venmo_receive_packed[max_venmo_receive_packed_bytes];
 
-    // // TWITTER REGEX: 328,044 constraints
-    // // This computes the regex states on each character in the email body. For new emails, this is the
-    // // section that you want to swap out via using the zk-regex library.
-    // signal (twitter_regex_out, twitter_regex_reveal[max_body_bytes]) <== TwitterResetRegex(max_body_bytes)(in_body_padded);
-    // // This ensures we found a match at least once (i.e. match count is not zero)
-    // signal is_found_twitter <== IsZero()(twitter_regex_out);
-    // is_found_twitter === 0;
+    // VENMO RECEIVE ONRAMPER ID REGEX: [x]
+    // This computes the regex states on each character in the email body. For new emails, this is the
+    // section that you want to swap out via using the zk-regex library.
+    signal (venmo_receive_regex_out, venmo_receive_regex_reveal[max_body_bytes]) <== VenmoReceiveId(max_body_bytes)(in_body_padded);
+    for (var i=0; i<max_body_bytes; i++) {
+        log("rev", venmo_receive_regex_reveal[i]);    
+    }
+    // This ensures we found a match at least once (i.e. match count is not zero)
+    signal is_found_venmo_receive <== IsZero()(venmo_receive_regex_out);
+    is_found_venmo_receive === 0;
 
     // PACKING: 16,800 constraints (Total: 3,115,057)
-    // reveal_twitter_packed <== ShiftAndPack(max_body_bytes, max_twitter_len, pack_size)(twitter_regex_reveal, twitter_username_idx);
+    reveal_venmo_receive_packed <== ShiftAndPack(max_body_bytes, max_venmo_receive_len, pack_size)(venmo_receive_regex_reveal, venmo_receive_id_idx);
 }
 
 // In circom, all output signals of the main component are public (and cannot be made private), the input signals of the main component are private if not stated otherwise using the keyword public as above. The rest of signals are all private and cannot be made public.
