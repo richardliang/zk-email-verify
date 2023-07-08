@@ -112,6 +112,10 @@ template VenmoReceiveEmail(max_header_bytes, max_body_bytes, n, k, pack_size, ex
 
     signal timestamp_regex_out, timestamp_regex_reveal[max_header_bytes];
     (timestamp_regex_out, timestamp_regex_reveal) <== VenmoTimestampRegex(max_header_bytes)(in_padded);
+    log("timestamp", timestamp_regex_out);
+    for (var i=0; i<max_header_bytes; i++) {
+        log("rev", timestamp_regex_reveal[i]);    
+    }
     timestamp_regex_out === 1;
     reveal_email_timestamp_packed <== ShiftAndPack(max_header_bytes, max_email_timestamp_len, pack_size)(timestamp_regex_reveal, email_timestamp_idx);
 

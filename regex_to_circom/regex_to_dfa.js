@@ -76,7 +76,7 @@ function test_regex() {
   // let message_id_regex = `(\r\n|^)message-id:<[=@.\\+_-a-zA-Z0-9]+>\r\n`;
   
   // -------- VENMO RECEIVE REGEXES --------
-  let raw_venmo_receive_timestamp_regex = `(; d=venmo.com; |^)t=([0-9]+);\r\n`;
+  let raw_venmo_receive_timestamp_regex = `t=(0|1|2|3|4|5|6|7|8|9)+;\r\n`;
   let raw_venmo_receive_onramper_id = `\r\ntps://venmo.com/code\\?user_id=3D(0|1|2|3|4|5|6|7|8|9)+&actor_id=3D`;
 
   // -------- TWITTER BODY REGEX ---------
@@ -93,9 +93,9 @@ function test_regex() {
 
   // --------- FINAL CONVERSION ---------
   //   console.log(format_regex_printable(raw_subject_regex));
-  let regex = regexToMinDFASpec(raw_subject_regex);
+  let regex = regexToMinDFASpec(raw_venmo_receive_timestamp_regex);
   //   console.log(format_regex_printable(regex));
-  return raw_venmo_receive_onramper_id;
+  return raw_venmo_receive_timestamp_regex;
   // return regex;
 }
 
