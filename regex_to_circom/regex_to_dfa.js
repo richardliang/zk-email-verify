@@ -19,6 +19,7 @@ const catch_all =
   "(0|1|2|3|4|5|6|7|8|9|a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|s|t|u|v|w|x|y|z|A|B|C|D|E|F|G|H|I|J|K|L|M|N|O|P|Q|R|S|T|U|V|W|X|Y|Z|!|\"|#|$|%|&|'|\\(|\\)|\\*|\\+|,|-|.|/|:|;|<|=|>|\\?|@|[|\\\\|]|^|_|`|{|\\||}|~| |\t|\n|\r|\x0b|\x0c)";
 const catch_all_without_semicolon =
   "(0|1|2|3|4|5|6|7|8|9|a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|s|t|u|v|w|x|y|z|A|B|C|D|E|F|G|H|I|J|K|L|M|N|O|P|Q|R|S|T|U|V|W|X|Y|Z|!|\"|#|$|%|&|'|\\(|\\)|\\*|\\+|,|-|.|/|:|<|=|>|\\?|@|[|\\\\|]|^|_|`|{|\\||}|~| |\t|\n|\r|\x0b|\x0c)";
+const word_char_with_new_line_and_equals = "(a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|s|t|u|v|w|x|y|z|A|B|C|D|E|F|G|H|I|J|K|L|M|N|O|P|Q|R|S|T|U|V|W|X|Y|Z|0|1|2|3|4|5|6|7|8|9|_|\r|\n|=)";
 
 const email_chars = `${alphanum}|_|.|-`;
 const base_64 = `(${alphanum}|\\+|/|=)`;
@@ -83,6 +84,10 @@ function test_regex() {
   // TODO: Why is this the case?
   let venmo_receive_onramper_id_regex = `\r\ntps://venmo.com/code\\?user_id=3D(0|1|2|3|4|5|6|7|8|9)+`;
 
+  // -------- VENMO RECEIVE REGEXES --------
+  // Extract offramper id
+  let venmo_send_offramper_id_regex = `user_id=3D` + `${word_char_with_new_line_and_equals}+`;
+
   // -------- TWITTER BODY REGEX ---------
   // let regex = STRING_PRESELECTOR + `${word_char}+`;
 
@@ -99,7 +104,7 @@ function test_regex() {
   //   console.log(format_regex_printable(raw_subject_regex));
   let regex = regexToMinDFASpec(raw_subject_regex);
   //   console.log(format_regex_printable(regex));
-  return venmo_receive_onramper_id_regex;
+  return venmo_send_offramper_id_regex;
   // return regex;
 }
 
