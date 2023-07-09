@@ -3,10 +3,12 @@ import json
 import string
 
 # Clear file
-OUTPUT_HALO2 = True
+OUTPUT_HALO2 = False
 
 graph_json = json.loads(subprocess.check_output(['npx', 'tsx', 'regex_to_dfa.js']))
 N = len(graph_json)
+
+print(graph_json, N)
 
 # Outgoing nodes
 graph = [{} for i in range(N)]
@@ -25,6 +27,8 @@ for i in range(N):
 
     if graph_json[i]['type'] == 'accept':
         accept_nodes.add(i)
+
+print("rev", rev_graph)
 
 accept_nodes = list(accept_nodes)
 assert len(accept_nodes) == 1
@@ -61,6 +65,11 @@ for i in range(1, N):
         lowercase = set(string.ascii_lowercase)
         digits = set(string.digits)
         vals = set(vals)
+
+        print("upper", uppercase)
+        print("lower", lowercase)
+        print("digits", digits)
+        print("vals", vals)
 
         if uppercase <= vals:
             vals -= uppercase
