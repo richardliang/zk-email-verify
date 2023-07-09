@@ -77,9 +77,11 @@ function test_regex() {
   
   // -------- VENMO RECEIVE REGEXES --------
   let venmo_receive_timestamp_regex = `t=(0|1|2|3|4|5|6|7|8|9)+;\r\n`;
-  // let venmo_receive_onramper_id_regex = `\r\ntps://venmo.com/code\\?user_id=3D(0|1|2|3|4|5|6|7|8|9)+&actor_id=3D`;
-  // WIP REGEX (for sachin)
-  let venmo_receive_onramper_id_regex = `user_id=3D(0|1|2|3|4|5|6|7|8|9)+`;
+  // Onramper ID regex had to be manually constructed:
+  // - First 25 char \r\ntps://venmo.com/code\\?us
+  // - Second 8 char er_id=3D
+  // TODO: Why is this the case?
+  let venmo_receive_onramper_id_regex = `\r\ntps://venmo.com/code\\?user_id=3D(0|1|2|3|4|5|6|7|8|9)+`;
 
   // -------- TWITTER BODY REGEX ---------
   // let regex = STRING_PRESELECTOR + `${word_char}+`;

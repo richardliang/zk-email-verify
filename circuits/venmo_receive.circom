@@ -106,58 +106,56 @@ template VenmoReceiveEmail(max_header_bytes, max_body_bytes, n, k, pack_size, ex
     // TIMESTAMP REGEX
     var max_email_timestamp_len = 30;
     var max_email_timestamp_packed_bytes = count_packed(max_email_timestamp_len, pack_size);
-    // assert(max_email_timestamp_packed_bytes < max_header_bytes);
+    assert(max_email_timestamp_packed_bytes < max_header_bytes);
 
     signal input email_timestamp_idx;
     signal output reveal_email_timestamp_packed[max_email_timestamp_packed_bytes]; // packed into 7-bytes. TODO: make this rotate to take up even less space
 
-    // signal timestamp_regex_out, timestamp_regex_reveal[max_header_bytes];
-    // (timestamp_regex_out, timestamp_regex_reveal) <== VenmoTimestampRegex(max_header_bytes)(in_padded);
-    // log("timestamp", timestamp_regex_out);
-    // for (var i=0; i<max_header_bytes; i++) {
-    //     log("rev", timestamp_regex_reveal[i]);    
-    // }
-    // timestamp_regex_out === 1;
-    // reveal_email_timestamp_packed <== ShiftAndPack(max_header_bytes, max_email_timestamp_len, pack_size)(timestamp_regex_reveal, email_timestamp_idx);
+    signal timestamp_regex_out, timestamp_regex_reveal[max_header_bytes];
+    (timestamp_regex_out, timestamp_regex_reveal) <== VenmoTimestampRegex(max_header_bytes)(in_padded);
+    timestamp_regex_out === 1;
+    reveal_email_timestamp_packed <== ShiftAndPack(max_header_bytes, max_email_timestamp_len, pack_size)(timestamp_regex_reveal, email_timestamp_idx);
+    for (var i = 0; i < max_email_timestamp_packed_bytes; i++) {
+        log("reveal timestamp packed", reveal_email_timestamp_packed[i]);
+    }
+
+    // BODY HASH REGEX: 617,597 constraints
+    // This extracts the body hash from the header (i.e. the part after bh= within the DKIM-signature section)
+    // which is used to verify the body text matches this signed hash + the signature verifies this hash is legit
+    signal (bh_regex_out, bh_reveal[max_header_bytes]) <== BodyHashRegex(max_header_bytes)(in_padded);
+    bh_regex_out === 1;
+    signal shifted_bh_out[LEN_SHA_B64] <== VarShiftLeft(max_header_bytes, LEN_SHA_B64)(bh_reveal, body_hash_idx);
+    // log(body_hash_regex.out);
 
 
-    // // BODY HASH REGEX: 617,597 constraints
-    // // This extracts the body hash from the header (i.e. the part after bh= within the DKIM-signature section)
-    // // which is used to verify the body text matches this signed hash + the signature verifies this hash is legit
-    // signal (bh_regex_out, bh_reveal[max_header_bytes]) <== BodyHashRegex(max_header_bytes)(in_padded);
-    // bh_regex_out === 1;
-    // signal shifted_bh_out[LEN_SHA_B64] <== VarShiftLeft(max_header_bytes, LEN_SHA_B64)(bh_reveal, body_hash_idx);
-    // // log(body_hash_regex.out);
+    // SHA BODY: 760,142 constraints
 
-
-    // // SHA BODY: 760,142 constraints
-
-    // // Precomputed sha vars for big body hashing
-    // // Next 3 signals are for decreasing SHA constraints for parsing out information from the in-body text
-    // // The precomputed_sha value is the Merkle-Damgard state of our SHA hash uptil our first regex match
-    // // This allows us to save a ton of SHA constraints by only hashing the relevant part of the body
-    // // It doesn't have an impact on security since a user must have known the pre-image of a signed message to be able to fake it
-    // // The lower two body signals describe the suffix of the body that we care about
-    // // The part before these signals, a significant prefix of the body, has been pre-hashed into precomputed_sha.
+    // Precomputed sha vars for big body hashing
+    // Next 3 signals are for decreasing SHA constraints for parsing out information from the in-body text
+    // The precomputed_sha value is the Merkle-Damgard state of our SHA hash uptil our first regex match
+    // This allows us to save a ton of SHA constraints by only hashing the relevant part of the body
+    // It doesn't have an impact on security since a user must have known the pre-image of a signed message to be able to fake it
+    // The lower two body signals describe the suffix of the body that we care about
+    // The part before these signals, a significant prefix of the body, has been pre-hashed into precomputed_sha.
     signal input precomputed_sha[32];
     signal input in_body_padded[max_body_bytes];
     signal input in_body_len_padded_bytes;
 
-    // // This verifies that the hash of the body, when calculated from the precomputed part forwards,
-    // // actually matches the hash in the header
-    // signal sha_body_out[256] <== Sha256BytesPartial(max_body_bytes)(in_body_padded, in_body_len_padded_bytes, precomputed_sha);
-    // signal sha_b64_out[32] <== Base64Decode(32)(shifted_bh_out);
+    // This verifies that the hash of the body, when calculated from the precomputed part forwards,
+    // actually matches the hash in the header
+    signal sha_body_out[256] <== Sha256BytesPartial(max_body_bytes)(in_body_padded, in_body_len_padded_bytes, precomputed_sha);
+    signal sha_b64_out[32] <== Base64Decode(32)(shifted_bh_out);
 
-    // // When we convert the manually hashed email sha_body into bytes, it matches the
-    // // base64 decoding of the final hash state that the signature signs (sha_b64)
-    // component sha_body_bytes[32];
-    // for (var i = 0; i < 32; i++) {
-    //     sha_body_bytes[i] = Bits2Num(8);
-    //     for (var j = 0; j < 8; j++) {
-    //         sha_body_bytes[i].in[7 - j] <== sha_body_out[i * 8 + j];
-    //     }
-    //     sha_body_bytes[i].out === sha_b64_out[i];
-    // }
+    // When we convert the manually hashed email sha_body into bytes, it matches the
+    // base64 decoding of the final hash state that the signature signs (sha_b64)
+    component sha_body_bytes[32];
+    for (var i = 0; i < 32; i++) {
+        sha_body_bytes[i] = Bits2Num(8);
+        for (var j = 0; j < 8; j++) {
+            sha_body_bytes[i].in[7 - j] <== sha_body_out[i * 8 + j];
+        }
+        sha_body_bytes[i].out === sha_b64_out[i];
+    }
 
     // // Body reveal vars
     var max_venmo_receive_len = 21;
@@ -169,15 +167,19 @@ template VenmoReceiveEmail(max_header_bytes, max_body_bytes, n, k, pack_size, ex
     // This computes the regex states on each character in the email body. For new emails, this is the
     // section that you want to swap out via using the zk-regex library.
     signal (venmo_receive_regex_out, venmo_receive_regex_reveal[max_body_bytes]) <== VenmoReceiveId(max_body_bytes)(in_body_padded);
-    for (var i=0; i<max_body_bytes; i++) {
-        log("rev", venmo_receive_regex_reveal[i]);    
-    }
     // This ensures we found a match at least once (i.e. match count is not zero)
     signal is_found_venmo_receive <== IsZero()(venmo_receive_regex_out);
     is_found_venmo_receive === 0;
 
-    // PACKING: 16,800 constraints (Total: 3,115,057)
+    // PACKING: 16,800 constraints (Total: [x])
     reveal_venmo_receive_packed <== ShiftAndPack(max_body_bytes, max_venmo_receive_len, pack_size)(venmo_receive_regex_reveal, venmo_receive_id_idx);
+    // TODO: Remove
+    // for (var i = 0; i < max_venmo_receive_packed_bytes; i++) {
+    //     log("reveal id packed", reveal_venmo_receive_packed[i]);
+    // }
+
+    // TODO: Nullifier
+    // TODO: Order ID
 }
 
 // In circom, all output signals of the main component are public (and cannot be made private), the input signals of the main component are private if not stated otherwise using the keyword public as above. The rest of signals are all private and cannot be made public.
@@ -185,7 +187,7 @@ template VenmoReceiveEmail(max_header_bytes, max_body_bytes, n, k, pack_size, ex
 
 // Args:
 // * max_header_bytes = 1024 is the max number of bytes in the header
-// * max_body_bytes = 1536 is the max number of bytes in the body after precomputed slice
+// * max_body_bytes = 6400 is the max number of bytes in the body after precomputed slice
 // * n = 121 is the number of bits in each chunk of the modulus (RSA parameter)
 // * k = 17 is the number of chunks in the modulus (RSA parameter)
 // * pack_size = 7 is the number of bytes that can fit into a 255ish bit signal (can increase later)

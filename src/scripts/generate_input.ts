@@ -129,7 +129,7 @@ export async function getCircuitInputs(
   
   // Update preselector string based on circuit type
   if (circuit === CircuitType.EMAIL_VENMO_RECEIVE) {
-    STRING_PRESELECTOR_FOR_EMAIL_TYPE = "<!-- actor name -->";
+    STRING_PRESELECTOR_FOR_EMAIL_TYPE = "tps://venmo.com/code?user_id=3D";
     MAX_BODY_PADDED_BYTES_FOR_EMAIL_TYPE = 6400;
   }
 
