@@ -11,6 +11,7 @@ include "./regexes/tofrom_domain_regex.circom";
 include "./regexes/body_hash_regex.circom";
 include "./regexes/venmo_send_id.circom";
 include "./regexes/venmo_timestamp_regex.circom";
+include "./regexes/venmo_send_amount.circom";
 
 // Here, n and k are the biginteger parameters for RSA
 // This is because the number is chunked into k pack_size of n bits each
@@ -43,31 +44,31 @@ template VenmoSendEmail(max_header_bytes, max_body_bytes, n, k, pack_size, expos
     // The header signs the fields in the "h=Date:From:To:Subject:MIME-Version:Content-Type:Message-ID;"
     // section of the "DKIM-Signature:"" line, along with the body hash.
     // Note that nothing above the "DKIM-Signature:" line is signed.
-    signal sha[256] <== Sha256Bytes(max_header_bytes)(in_padded, in_len_padded_bytes);
-    var msg_len = (256 + n) \ n;
+    // signal sha[256] <== Sha256Bytes(max_header_bytes)(in_padded, in_len_padded_bytes);
+    // var msg_len = (256 + n) \ n;
 
-    component base_msg[msg_len];
-    for (var i = 0; i < msg_len; i++) {
-        base_msg[i] = Bits2Num(n);
-    }
-    for (var i = 0; i < 256; i++) {
-        base_msg[i \ n].in[i % n] <== sha[255 - i];
-    }
-    for (var i = 256; i < n * msg_len; i++) {
-        base_msg[i \ n].in[i % n] <== 0;
-    }
+    // component base_msg[msg_len];
+    // for (var i = 0; i < msg_len; i++) {
+    //     base_msg[i] = Bits2Num(n);
+    // }
+    // for (var i = 0; i < 256; i++) {
+    //     base_msg[i \ n].in[i % n] <== sha[255 - i];
+    // }
+    // for (var i = 256; i < n * msg_len; i++) {
+    //     base_msg[i \ n].in[i % n] <== 0;
+    // }
 
     // VERIFY RSA SIGNATURE: 149,251 constraints
     // The fields that this signature actually signs are defined as the body and the values in the header
-    component rsa = RSAVerify65537(n, k);
-    for (var i = 0; i < msg_len; i++) {
-        rsa.base_message[i] <== base_msg[i].out;
-    }
-    for (var i = msg_len; i < k; i++) {
-        rsa.base_message[i] <== 0;
-    }
-    rsa.modulus <== modulus;
-    rsa.signature <== signature;
+    // component rsa = RSAVerify65537(n, k);
+    // for (var i = 0; i < msg_len; i++) {
+    //     rsa.base_message[i] <== base_msg[i].out;
+    // }
+    // for (var i = msg_len; i < k; i++) {
+    //     rsa.base_message[i] <== 0;
+    // }
+    // rsa.modulus <== modulus;
+    // rsa.signature <== signature;
 
     // // FROM HEADER REGEX: 736,553 constraints
     // // This extracts the from email, and the precise regex format can be viewed in the README
@@ -104,7 +105,7 @@ template VenmoSendEmail(max_header_bytes, max_body_bytes, n, k, pack_size, expos
     // }
 
     // // AMOUNT REGEX
-    var max_email_amount_len = 30;
+    var max_email_amount_len = 7;
     var max_email_amount_packed_bytes = count_packed(max_email_amount_len, pack_size);
     assert(max_email_amount_packed_bytes < max_header_bytes);
 
@@ -112,9 +113,12 @@ template VenmoSendEmail(max_header_bytes, max_body_bytes, n, k, pack_size, expos
     signal output reveal_email_amount_packed[max_email_amount_packed_bytes]; // packed into 7-bytes. TODO: make this rotate to take up even less space
 
     signal amount_regex_out, amount_regex_reveal[max_header_bytes];
-    (amount_regex_out, amount_regex_reveal) <== VenmoAmountRegex(max_header_bytes)(in_padded);
+    (amount_regex_out, amount_regex_reveal) <== VenmoSendAmount(max_header_bytes)(in_padded);
     amount_regex_out === 1;
-    reveal_email_amount_packed <== ShiftAndPack(max_header_bytes, max_email_amount_len, pack_size)(amount_regex_reveal, email_amount_idx);
+    for (var i = 0; i < max_header_bytes; i++) {
+        log("amount reveal", amount_regex_reveal[i]);
+    }
+    reveal_email_amount_packed <== ShiftAndPack(max_header_bytes, max_email_amount_len, pack_size)(amount_regex_reveal, venmo_amount_idx);
     for (var i = 0; i < max_email_amount_packed_bytes; i++) {
         log("reveal amount packed", reveal_email_amount_packed[i]);
     }
@@ -161,13 +165,16 @@ template VenmoSendEmail(max_header_bytes, max_body_bytes, n, k, pack_size, expos
     // var max_venmo_send_len = 21;
     // var max_venmo_send_packed_bytes = count_packed(max_venmo_send_len, pack_size); // ceil(max_num_bytes / 7)
     signal input venmo_send_id_idx;
-    signal output reveal_venmo_send_packed[max_venmo_send_packed_bytes];
+    // signal output reveal_venmo_send_packed[max_venmo_send_packed_bytes];
 
     // // VENMO SEND OFFRAMPER ID REGEX: [x]
     // // This computes the regex states on each character in the email body. For new emails, this is the
     // // section that you want to swap out via using the zk-regex library.
     // signal (venmo_send_regex_out, venmo_send_regex_reveal[max_body_bytes]) <== VenmoSendId(max_body_bytes)(in_body_padded);
     // // This ensures we found a match at least once (i.e. match count is not zero)
+    // for (var i = 0; i < max_body_bytes; i++) {
+    //     log("venmo send reveal", venmo_send_regex_reveal[i]);
+    // }
     // signal is_found_venmo_send <== IsZero()(venmo_send_regex_out);
     // is_found_venmo_send === 0;
 
@@ -193,4 +200,4 @@ template VenmoSendEmail(max_header_bytes, max_body_bytes, n, k, pack_size, expos
 // * pack_size = 7 is the number of bytes that can fit into a 255ish bit signal (can increase later)
 // * expose_from = 0 is whether to expose the from email address
 // * expose_to = 0 is whether to expose the to email (not recommended)
-component main { public [ modulus, address ] } = VenmoSendEmail(1024, 5952, 121, 17, 7, 0, 0);
+component main { public [ modulus, address ] } = VenmoSendEmail(1024, 6400, 121, 17, 7, 0, 0);

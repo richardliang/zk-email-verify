@@ -51,7 +51,7 @@ export interface ICircuitInputs {
   email_from_idx?: string;
   email_timestamp_idx?: string;
   venmo_send_id_idx?: string;
-  email_amount_idx?: string;
+  venmo_amount_idx?: string;
 
   // subject commands only
   command_idx?: string;
@@ -136,7 +136,7 @@ export async function getCircuitInputs(
     MAX_BODY_PADDED_BYTES_FOR_EMAIL_TYPE = 6400;
   } else if (circuit === CircuitType.EMAIL_VENMO_SEND) {
     STRING_PRESELECTOR_FOR_EMAIL_TYPE = "                    href=3D\"https://venmo.com/code?user_id=3D";
-    MAX_BODY_PADDED_BYTES_FOR_EMAIL_TYPE = 5952;
+    MAX_BODY_PADDED_BYTES_FOR_EMAIL_TYPE = 6400;
   }
 
   // Derive modulus from signature
@@ -236,8 +236,8 @@ export async function getCircuitInputs(
     const SEND_ID_SELECTOR = Buffer.from(STRING_PRESELECTOR_FOR_EMAIL_TYPE);
     const venmo_send_id_idx = (Buffer.from(bodyRemaining).indexOf(SEND_ID_SELECTOR) + SEND_ID_SELECTOR.length).toString();
 
-    const email_amount_idx = (raw_header.length - trimStrByStr(email_subject, "$").length).toString();
-    console.log("Indexes into for venmo send email are: ", email_amount_idx, venmo_send_id_idx);
+    const venmo_amount_idx = (raw_header.length - trimStrByStr(email_subject, "$").length).toString();
+    console.log("Indexes into for venmo send email are: ", venmo_amount_idx, venmo_send_id_idx);
     
     circuitInputs = {
       in_padded,
@@ -248,7 +248,7 @@ export async function getCircuitInputs(
       in_body_padded,
       in_body_len_padded_bytes,
       venmo_send_id_idx,
-      email_amount_idx,
+      venmo_amount_idx,
       address,
       // address_plus_one,
       body_hash_idx,

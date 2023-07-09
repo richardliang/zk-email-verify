@@ -93,7 +93,7 @@ function test_regex() {
   let venmo_send_offramper_id_regex = `   href=3D\"https://venmo.` + `${r0to9_with_new_line_and_equals}+`;
   
   // TODO: WIP
-  let venmo_amount_regex = `$` + `(${r0to9})+` + `.`;
+  let venmo_amount_regex = `$` + `(${alphanum})+` + `.`;
 
   // -------- TWITTER BODY REGEX ---------
   // let regex = STRING_PRESELECTOR + `${word_char}+`;
@@ -109,9 +109,9 @@ function test_regex() {
 
   // --------- FINAL CONVERSION ---------
   //   console.log(format_regex_printable(raw_subject_regex));
-  let regex = regexToMinDFASpec(raw_subject_regex);
+  // let regex = regexToMinDFASpec(venmo_amount_regex);
   //   console.log(format_regex_printable(regex));
-  return venmo_send_offramper_id_regex;
+  return venmo_amount_regex;
   // return regex;
 }
 
