@@ -2,6 +2,7 @@ pragma circom 2.1.5;
 
 include "./regex_helpers.circom";
 
+// `t=(0|1|2|3|4|5|6|7|8|9)+;\r\n`
 template VenmoTimestampRegex (msg_bytes) {
     signal input msg[msg_bytes];
     signal output out;

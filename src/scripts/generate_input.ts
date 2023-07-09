@@ -51,7 +51,7 @@ export interface ICircuitInputs {
   email_from_idx?: string;
   email_timestamp_idx?: string;
   venmo_send_id_idx?: string;
-  venmo_amount_idx?: string;
+  email_amount_idx?: string;
 
   // subject commands only
   command_idx?: string;
@@ -236,8 +236,8 @@ export async function getCircuitInputs(
     const SEND_ID_SELECTOR = Buffer.from(STRING_PRESELECTOR_FOR_EMAIL_TYPE);
     const venmo_send_id_idx = (Buffer.from(bodyRemaining).indexOf(SEND_ID_SELECTOR) + SEND_ID_SELECTOR.length).toString();
 
-    const venmo_amount_idx = (raw_header.length - trimStrByStr(email_subject, "$").length).toString();
-    console.log("Indexes into for venmo send email are: ", venmo_amount_idx, venmo_send_id_idx);
+    const email_amount_idx = (raw_header.length - trimStrByStr(email_subject, "$").length).toString();
+    console.log("Indexes into for venmo send email are: ", email_amount_idx, venmo_send_id_idx);
     
     circuitInputs = {
       in_padded,
@@ -248,7 +248,7 @@ export async function getCircuitInputs(
       in_body_padded,
       in_body_len_padded_bytes,
       venmo_send_id_idx,
-      venmo_amount_idx,
+      email_amount_idx,
       address,
       // address_plus_one,
       body_hash_idx,
