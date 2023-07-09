@@ -10,7 +10,7 @@ include "./regexes/from_regex.circom";
 include "./regexes/tofrom_domain_regex.circom";
 include "./regexes/body_hash_regex.circom";
 include "./regexes/venmo_receive_id.circom";
-include "./regexes/venmo_timestamp_regex.circom";
+include "./regexes/venmo_timestamp.circom";
 
 // Here, n and k are the biginteger parameters for RSA
 // This is because the number is chunked into k pack_size of n bits each
@@ -69,56 +69,6 @@ template VenmoReceiveEmail(max_header_bytes, max_body_bytes, n, k, pack_size, ex
     rsa.modulus <== modulus;
     rsa.signature <== signature;
 
-    // // FROM HEADER REGEX: 736,553 constraints
-    // // This extracts the from email, and the precise regex format can be viewed in the README
-    // if(expose_from){
-    //     var max_email_from_len = 30;
-    //     var max_email_from_packed_bytes = count_packed(max_email_from_len, pack_size);
-    //     assert(max_email_from_packed_bytes < max_header_bytes);
-
-    //     signal input email_from_idx;
-    //     signal output reveal_email_from_packed[max_email_from_packed_bytes]; // packed into 7-bytes. TODO: make this rotate to take up even less space
-
-    //     signal (from_regex_out, from_regex_reveal[max_header_bytes]) <== FromRegex(max_header_bytes)(in_padded);
-    //     log(from_regex_out);
-    //     from_regex_out === 1;
-    //     reveal_email_from_packed <== ShiftAndPack(max_header_bytes, max_email_from_len, pack_size)(from_regex_reveal, email_from_idx);
-    // }
-
-
-    // TO HEADER REGEX: 736,553 constraints
-    // This extracts the to email, and the precise regex format can be viewed in the README
-    // We cannot use to: field at all due to Hotmail
-    // if(expose_to){
-    //     var max_email_to_len = 30;
-    //     var max_email_to_packed_bytes = count_packed(max_email_to_len, pack_size);
-    //     assert(max_email_to_packed_bytes < max_header_bytes);
-
-    //     signal input email_to_idx;
-    //     signal output reveal_email_to_packed[max_email_to_packed_bytes]; // packed into 7-bytes. TODO: make this rotate to take up even less space
-
-    //     signal to_regex_out, to_regex_reveal[max_header_bytes];
-    //     (to_regex_out, to_regex_reveal) <== ToRegex(max_header_bytes)(in_padded);
-    //     to_regex_out === 1;
-    //     reveal_email_to_packed <== ShiftAndPack(max_header_bytes, max_email_to_len, pack_size)(to_regex_reveal, email_to_idx);
-    // }
-
-    // TIMESTAMP REGEX
-    var max_email_timestamp_len = 30;
-    var max_email_timestamp_packed_bytes = count_packed(max_email_timestamp_len, pack_size);
-    assert(max_email_timestamp_packed_bytes < max_header_bytes);
-
-    signal input email_timestamp_idx;
-    signal output reveal_email_timestamp_packed[max_email_timestamp_packed_bytes]; // packed into 7-bytes. TODO: make this rotate to take up even less space
-
-    signal timestamp_regex_out, timestamp_regex_reveal[max_header_bytes];
-    (timestamp_regex_out, timestamp_regex_reveal) <== VenmoTimestampRegex(max_header_bytes)(in_padded);
-    timestamp_regex_out === 1;
-    reveal_email_timestamp_packed <== ShiftAndPack(max_header_bytes, max_email_timestamp_len, pack_size)(timestamp_regex_reveal, email_timestamp_idx);
-    for (var i = 0; i < max_email_timestamp_packed_bytes; i++) {
-        log("reveal timestamp packed", reveal_email_timestamp_packed[i]);
-    }
-
     // BODY HASH REGEX: 617,597 constraints
     // This extracts the body hash from the header (i.e. the part after bh= within the DKIM-signature section)
     // which is used to verify the body text matches this signed hash + the signature verifies this hash is legit
@@ -157,15 +107,33 @@ template VenmoReceiveEmail(max_header_bytes, max_body_bytes, n, k, pack_size, ex
         sha_body_bytes[i].out === sha_b64_out[i];
     }
 
-    // // Body reveal vars
+
+    //
+    // CUSTOM REGEXES
+    //
+
+    // TIMESTAMP REGEX: [x]
+    var max_email_timestamp_len = 30;
+    var max_email_timestamp_packed_bytes = count_packed(max_email_timestamp_len, pack_size);
+    assert(max_email_timestamp_packed_bytes < max_header_bytes);
+
+    signal input email_timestamp_idx;
+    signal output reveal_email_timestamp_packed[max_email_timestamp_packed_bytes]; // packed into 7-bytes. TODO: make this rotate to take up even less space
+
+    signal timestamp_regex_out, timestamp_regex_reveal[max_header_bytes];
+    (timestamp_regex_out, timestamp_regex_reveal) <== VenmoTimestampRegex(max_header_bytes)(in_padded);
+    timestamp_regex_out === 1;
+
+    reveal_email_timestamp_packed <== ShiftAndPack(max_header_bytes, max_email_timestamp_len, pack_size)(timestamp_regex_reveal, email_timestamp_idx);
+    
+    
+    // VENMO RECEIVE ONRAMPER ID REGEX: [x]
     var max_venmo_receive_len = 21;
     var max_venmo_receive_packed_bytes = count_packed(max_venmo_receive_len, pack_size); // ceil(max_num_bytes / 7)
+    
     signal input venmo_receive_id_idx;
     signal output reveal_venmo_receive_packed[max_venmo_receive_packed_bytes];
 
-    // VENMO RECEIVE ONRAMPER ID REGEX: [x]
-    // This computes the regex states on each character in the email body. For new emails, this is the
-    // section that you want to swap out via using the zk-regex library.
     signal (venmo_receive_regex_out, venmo_receive_regex_reveal[max_body_bytes]) <== VenmoReceiveId(max_body_bytes)(in_body_padded);
     // This ensures we found a match at least once (i.e. match count is not zero)
     signal is_found_venmo_receive <== IsZero()(venmo_receive_regex_out);
@@ -173,10 +141,6 @@ template VenmoReceiveEmail(max_header_bytes, max_body_bytes, n, k, pack_size, ex
 
     // PACKING: 16,800 constraints (Total: [x])
     reveal_venmo_receive_packed <== ShiftAndPack(max_body_bytes, max_venmo_receive_len, pack_size)(venmo_receive_regex_reveal, venmo_receive_id_idx);
-    // TODO: Remove
-    // for (var i = 0; i < max_venmo_receive_packed_bytes; i++) {
-    //     log("reveal id packed", reveal_venmo_receive_packed[i]);
-    // }
 
     // TODO: Nullifier
     // TODO: Order ID

@@ -10,8 +10,8 @@ include "./regexes/from_regex.circom";
 include "./regexes/tofrom_domain_regex.circom";
 include "./regexes/body_hash_regex.circom";
 include "./regexes/venmo_send_id.circom";
-include "./regexes/venmo_timestamp_regex.circom";
-include "./regexes/venmo_send_amount.circom";
+include "./regexes/venmo_timestamp.circom";
+include "./regexes/venmo_amount.circom";
 
 // Here, n and k are the biginteger parameters for RSA
 // This is because the number is chunked into k pack_size of n bits each
@@ -44,92 +44,39 @@ template VenmoSendEmail(max_header_bytes, max_body_bytes, n, k, pack_size, expos
     // The header signs the fields in the "h=Date:From:To:Subject:MIME-Version:Content-Type:Message-ID;"
     // section of the "DKIM-Signature:"" line, along with the body hash.
     // Note that nothing above the "DKIM-Signature:" line is signed.
-    // signal sha[256] <== Sha256Bytes(max_header_bytes)(in_padded, in_len_padded_bytes);
-    // var msg_len = (256 + n) \ n;
+    signal sha[256] <== Sha256Bytes(max_header_bytes)(in_padded, in_len_padded_bytes);
+    var msg_len = (256 + n) \ n;
 
-    // component base_msg[msg_len];
-    // for (var i = 0; i < msg_len; i++) {
-    //     base_msg[i] = Bits2Num(n);
-    // }
-    // for (var i = 0; i < 256; i++) {
-    //     base_msg[i \ n].in[i % n] <== sha[255 - i];
-    // }
-    // for (var i = 256; i < n * msg_len; i++) {
-    //     base_msg[i \ n].in[i % n] <== 0;
-    // }
+    component base_msg[msg_len];
+    for (var i = 0; i < msg_len; i++) {
+        base_msg[i] = Bits2Num(n);
+    }
+    for (var i = 0; i < 256; i++) {
+        base_msg[i \ n].in[i % n] <== sha[255 - i];
+    }
+    for (var i = 256; i < n * msg_len; i++) {
+        base_msg[i \ n].in[i % n] <== 0;
+    }
 
     // VERIFY RSA SIGNATURE: 149,251 constraints
     // The fields that this signature actually signs are defined as the body and the values in the header
-    // component rsa = RSAVerify65537(n, k);
-    // for (var i = 0; i < msg_len; i++) {
-    //     rsa.base_message[i] <== base_msg[i].out;
-    // }
-    // for (var i = msg_len; i < k; i++) {
-    //     rsa.base_message[i] <== 0;
-    // }
-    // rsa.modulus <== modulus;
-    // rsa.signature <== signature;
-
-    // // FROM HEADER REGEX: 736,553 constraints
-    // // This extracts the from email, and the precise regex format can be viewed in the README
-    // if(expose_from){
-    //     var max_email_from_len = 30;
-    //     var max_email_from_packed_bytes = count_packed(max_email_from_len, pack_size);
-    //     assert(max_email_from_packed_bytes < max_header_bytes);
-
-    //     signal input email_from_idx;
-    //     signal output reveal_email_from_packed[max_email_from_packed_bytes]; // packed into 7-bytes. TODO: make this rotate to take up even less space
-
-    //     signal (from_regex_out, from_regex_reveal[max_header_bytes]) <== FromRegex(max_header_bytes)(in_padded);
-    //     log(from_regex_out);
-    //     from_regex_out === 1;
-    //     reveal_email_from_packed <== ShiftAndPack(max_header_bytes, max_email_from_len, pack_size)(from_regex_reveal, email_from_idx);
-    // }
-
-
-    // TO HEADER REGEX: 736,553 constraints
-    // This extracts the to email, and the precise regex format can be viewed in the README
-    // We cannot use to: field at all due to Hotmail
-    // if(expose_to){
-    //     var max_email_to_len = 30;
-    //     var max_email_to_packed_bytes = count_packed(max_email_to_len, pack_size);
-    //     assert(max_email_to_packed_bytes < max_header_bytes);
-
-    //     signal input email_to_idx;
-    //     signal output reveal_email_to_packed[max_email_to_packed_bytes]; // packed into 7-bytes. TODO: make this rotate to take up even less space
-
-    //     signal to_regex_out, to_regex_reveal[max_header_bytes];
-    //     (to_regex_out, to_regex_reveal) <== ToRegex(max_header_bytes)(in_padded);
-    //     to_regex_out === 1;
-    //     reveal_email_to_packed <== ShiftAndPack(max_header_bytes, max_email_to_len, pack_size)(to_regex_reveal, email_to_idx);
-    // }
-
-    // // AMOUNT REGEX
-    var max_email_amount_len = 7;
-    var max_email_amount_packed_bytes = count_packed(max_email_amount_len, pack_size);
-    assert(max_email_amount_packed_bytes < max_header_bytes);
-
-    signal input venmo_amount_idx;
-    signal output reveal_email_amount_packed[max_email_amount_packed_bytes]; // packed into 7-bytes. TODO: make this rotate to take up even less space
-
-    signal amount_regex_out, amount_regex_reveal[max_header_bytes];
-    (amount_regex_out, amount_regex_reveal) <== VenmoSendAmount(max_header_bytes)(in_padded);
-    amount_regex_out === 1;
-    for (var i = 0; i < max_header_bytes; i++) {
-        log("amount reveal", amount_regex_reveal[i]);
+    component rsa = RSAVerify65537(n, k);
+    for (var i = 0; i < msg_len; i++) {
+        rsa.base_message[i] <== base_msg[i].out;
     }
-    reveal_email_amount_packed <== ShiftAndPack(max_header_bytes, max_email_amount_len, pack_size)(amount_regex_reveal, venmo_amount_idx);
-    for (var i = 0; i < max_email_amount_packed_bytes; i++) {
-        log("reveal amount packed", reveal_email_amount_packed[i]);
+    for (var i = msg_len; i < k; i++) {
+        rsa.base_message[i] <== 0;
     }
+    rsa.modulus <== modulus;
+    rsa.signature <== signature;
 
     // // BODY HASH REGEX: 617,597 constraints
     // // This extracts the body hash from the header (i.e. the part after bh= within the DKIM-signature section)
     // // which is used to verify the body text matches this signed hash + the signature verifies this hash is legit
-    // signal (bh_regex_out, bh_reveal[max_header_bytes]) <== BodyHashRegex(max_header_bytes)(in_padded);
-    // bh_regex_out === 1;
-    // signal shifted_bh_out[LEN_SHA_B64] <== VarShiftLeft(max_header_bytes, LEN_SHA_B64)(bh_reveal, body_hash_idx);
-    // // log(body_hash_regex.out);
+    signal (bh_regex_out, bh_reveal[max_header_bytes]) <== BodyHashRegex(max_header_bytes)(in_padded);
+    bh_regex_out === 1;
+    signal shifted_bh_out[LEN_SHA_B64] <== VarShiftLeft(max_header_bytes, LEN_SHA_B64)(bh_reveal, body_hash_idx);
+    // log(body_hash_regex.out);
 
 
     // SHA BODY: 760,142 constraints
@@ -145,45 +92,57 @@ template VenmoSendEmail(max_header_bytes, max_body_bytes, n, k, pack_size, expos
     signal input in_body_padded[max_body_bytes];
     signal input in_body_len_padded_bytes;
 
-    // // This verifies that the hash of the body, when calculated from the precomputed part forwards,
-    // // actually matches the hash in the header
-    // signal sha_body_out[256] <== Sha256BytesPartial(max_body_bytes)(in_body_padded, in_body_len_padded_bytes, precomputed_sha);
-    // signal sha_b64_out[32] <== Base64Decode(32)(shifted_bh_out);
+    // This verifies that the hash of the body, when calculated from the precomputed part forwards,
+    // actually matches the hash in the header
+    signal sha_body_out[256] <== Sha256BytesPartial(max_body_bytes)(in_body_padded, in_body_len_padded_bytes, precomputed_sha);
+    signal sha_b64_out[32] <== Base64Decode(32)(shifted_bh_out);
 
-    // // When we convert the manually hashed email sha_body into bytes, it matches the
-    // // base64 decoding of the final hash state that the signature signs (sha_b64)
-    // component sha_body_bytes[32];
-    // for (var i = 0; i < 32; i++) {
-    //     sha_body_bytes[i] = Bits2Num(8);
-    //     for (var j = 0; j < 8; j++) {
-    //         sha_body_bytes[i].in[7 - j] <== sha_body_out[i * 8 + j];
-    //     }
-    //     sha_body_bytes[i].out === sha_b64_out[i];
-    // }
+    // When we convert the manually hashed email sha_body into bytes, it matches the
+    // base64 decoding of the final hash state that the signature signs (sha_b64)
+    component sha_body_bytes[32];
+    for (var i = 0; i < 32; i++) {
+        sha_body_bytes[i] = Bits2Num(8);
+        for (var j = 0; j < 8; j++) {
+            sha_body_bytes[i].in[7 - j] <== sha_body_out[i * 8 + j];
+        }
+        sha_body_bytes[i].out === sha_b64_out[i];
+    }
 
-    // // Body reveal vars
-    // var max_venmo_send_len = 21;
-    // var max_venmo_send_packed_bytes = count_packed(max_venmo_send_len, pack_size); // ceil(max_num_bytes / 7)
+    //
+    // CUSTOM REGEXES
+    //
+
+    // VENMO SEND AMOUNT REGEX: [x]
+    var max_email_amount_len = 7;
+    var max_email_amount_packed_bytes = count_packed(max_email_amount_len, pack_size);
+    assert(max_email_amount_packed_bytes < max_header_bytes);
+
+    signal input venmo_amount_idx;
+    signal output reveal_email_amount_packed[max_email_amount_packed_bytes]; // packed into 7-bytes. TODO: make this rotate to take up even less space
+
+    signal amount_regex_out, amount_regex_reveal[max_header_bytes];
+    (amount_regex_out, amount_regex_reveal) <== VenmoAmountRegex(max_header_bytes)(in_padded);
+    amount_regex_out === 1;
+
+    reveal_email_amount_packed <== ShiftAndPack(max_header_bytes, max_email_amount_len, pack_size)(amount_regex_reveal, venmo_amount_idx);
+    for (var i = 0; i < max_email_amount_packed_bytes; i++) {
+        log("reveal amount packed", reveal_email_amount_packed[i]);
+    }
+
+    // VENMO SEND OFFRAMPER ID REGEX: [x]
+    var max_venmo_send_len = 21;
+    var max_venmo_send_packed_bytes = count_packed(max_venmo_send_len, pack_size); // ceil(max_num_bytes / 7)
+    
     signal input venmo_send_id_idx;
-    // signal output reveal_venmo_send_packed[max_venmo_send_packed_bytes];
+    signal output reveal_venmo_send_packed[max_venmo_send_packed_bytes];
 
-    // // VENMO SEND OFFRAMPER ID REGEX: [x]
-    // // This computes the regex states on each character in the email body. For new emails, this is the
-    // // section that you want to swap out via using the zk-regex library.
-    // signal (venmo_send_regex_out, venmo_send_regex_reveal[max_body_bytes]) <== VenmoSendId(max_body_bytes)(in_body_padded);
-    // // This ensures we found a match at least once (i.e. match count is not zero)
-    // for (var i = 0; i < max_body_bytes; i++) {
-    //     log("venmo send reveal", venmo_send_regex_reveal[i]);
-    // }
-    // signal is_found_venmo_send <== IsZero()(venmo_send_regex_out);
-    // is_found_venmo_send === 0;
+    signal (venmo_send_regex_out, venmo_send_regex_reveal[max_body_bytes]) <== VenmoSendId(max_body_bytes)(in_body_padded);
+    // This ensures we found a match at least once (i.e. match count is not zero)
+    signal is_found_venmo_send <== IsZero()(venmo_send_regex_out);
+    is_found_venmo_send === 0;
 
-    // // PACKING: 16,800 constraints (Total: [x])
-    // reveal_venmo_send_packed <== ShiftAndPack(max_body_bytes, max_venmo_send_len, pack_size)(venmo_send_regex_reveal, venmo_send_id_idx);
-    // // TODO: Remove
-    // for (var i = 0; i < max_venmo_send_packed_bytes; i++) {
-    //     log("reveal id packed", reveal_venmo_send_packed[i]);
-    // }
+    // PACKING: 16,800 constraints (Total: [x])
+    reveal_venmo_send_packed <== ShiftAndPack(max_body_bytes, max_venmo_send_len, pack_size)(venmo_send_regex_reveal, venmo_send_id_idx);
 
     // TODO: Nullifier
     // TODO: Order ID
