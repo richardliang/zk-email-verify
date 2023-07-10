@@ -70,9 +70,9 @@ template VenmoSendEmail(max_header_bytes, max_body_bytes, n, k, pack_size, expos
     rsa.modulus <== modulus;
     rsa.signature <== signature;
 
-    // // BODY HASH REGEX: 617,597 constraints
-    // // This extracts the body hash from the header (i.e. the part after bh= within the DKIM-signature section)
-    // // which is used to verify the body text matches this signed hash + the signature verifies this hash is legit
+    // BODY HASH REGEX: 617,597 constraints
+    // This extracts the body hash from the header (i.e. the part after bh= within the DKIM-signature section)
+    // which is used to verify the body text matches this signed hash + the signature verifies this hash is legit
     signal (bh_regex_out, bh_reveal[max_header_bytes]) <== BodyHashRegex(max_header_bytes)(in_padded);
     bh_regex_out === 1;
     signal shifted_bh_out[LEN_SHA_B64] <== VarShiftLeft(max_header_bytes, LEN_SHA_B64)(bh_reveal, body_hash_idx);
@@ -125,9 +125,6 @@ template VenmoSendEmail(max_header_bytes, max_body_bytes, n, k, pack_size, expos
     amount_regex_out === 1;
 
     reveal_email_amount_packed <== ShiftAndPack(max_header_bytes, max_email_amount_len, pack_size)(amount_regex_reveal, venmo_amount_idx);
-    for (var i = 0; i < max_email_amount_packed_bytes; i++) {
-        log("reveal amount packed", reveal_email_amount_packed[i]);
-    }
 
     // VENMO SEND OFFRAMPER ID REGEX: [x]
     var max_venmo_send_len = 21;
@@ -159,4 +156,4 @@ template VenmoSendEmail(max_header_bytes, max_body_bytes, n, k, pack_size, expos
 // * pack_size = 7 is the number of bytes that can fit into a 255ish bit signal (can increase later)
 // * expose_from = 0 is whether to expose the from email address
 // * expose_to = 0 is whether to expose the to email (not recommended)
-component main { public [ modulus, address ] } = VenmoSendEmail(1024, 6400, 121, 17, 7, 0, 0);
+component main { public [ modulus, address ] } = VenmoSendEmail(1024, 5952, 121, 17, 7, 0, 0);

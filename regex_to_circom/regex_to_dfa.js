@@ -20,6 +20,7 @@ const catch_all =
 const catch_all_without_semicolon =
   "(0|1|2|3|4|5|6|7|8|9|a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|s|t|u|v|w|x|y|z|A|B|C|D|E|F|G|H|I|J|K|L|M|N|O|P|Q|R|S|T|U|V|W|X|Y|Z|!|\"|#|$|%|&|'|\\(|\\)|\\*|\\+|,|-|.|/|:|<|=|>|\\?|@|[|\\\\|]|^|_|`|{|\\||}|~| |\t|\n|\r|\x0b|\x0c)";
 const r0to9_with_new_line_and_equals = "(0|1|2|3|4|5|6|7|8|9|\r|\n|=)";
+const r0to9_with_period = "(0|1|2|3|4|5|6|7|8|9|.)";
 
 const email_chars = `${alphanum}|_|.|-`;
 const base_64 = `(${alphanum}|\\+|/|=)`;
@@ -91,9 +92,10 @@ function test_regex() {
   // -    href=3D\"https://venmo.
   // - com/code\\?user_id=3D
   let venmo_send_offramper_id_regex = `   href=3D\"https://venmo.` + `${r0to9_with_new_line_and_equals}+`;
-  
-  // TODO: WIP
-  let venmo_amount_regex = `$` + `(${alphanum})+` + `.`;
+  // Extract amount
+  // TODO: it seems like there is a min regex string length of 2 chars?
+  // Prefix with 3 chars and then manually edit regex circom `$ab` -> `$`;
+  let venmo_amount_regex = `$` + `(${r0to9_with_period})+` + `\r\n`;
 
   // -------- TWITTER BODY REGEX ---------
   // let regex = STRING_PRESELECTOR + `${word_char}+`;
