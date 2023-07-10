@@ -9,15 +9,16 @@ include "./helpers/extract.circom";
 include "./regexes/from_regex.circom";
 include "./regexes/tofrom_domain_regex.circom";
 include "./regexes/body_hash_regex.circom";
-include "./regexes/venmo_receive_id.circom";
+include "./regexes/venmo_send_id.circom";
 include "./regexes/venmo_timestamp.circom";
+include "./regexes/venmo_amount.circom";
 
 // Here, n and k are the biginteger parameters for RSA
 // This is because the number is chunked into k pack_size of n bits each
 // Max header bytes shouldn't need to be changed much per email,
 // but the max mody bytes may need to be changed to be larger if the email has a lot of i.e. HTML formatting
 // TODO: split into header and body
-template VenmoReceiveEmail(max_header_bytes, max_body_bytes, n, k, pack_size, expose_from, expose_to) {
+template VenmoSendEmail(max_header_bytes, max_body_bytes, n, k, pack_size, expose_from, expose_to) {
     assert(max_header_bytes % 64 == 0);
     assert(max_body_bytes % 64 == 0);
     assert(expose_from < 2); // 1 if we should expose the from, 0 if we should not
@@ -107,40 +108,38 @@ template VenmoReceiveEmail(max_header_bytes, max_body_bytes, n, k, pack_size, ex
         sha_body_bytes[i].out === sha_b64_out[i];
     }
 
-
     //
     // CUSTOM REGEXES
     //
 
-    // TIMESTAMP REGEX: [x]
-    var max_email_timestamp_len = 30;
-    var max_email_timestamp_packed_bytes = count_packed(max_email_timestamp_len, pack_size);
-    assert(max_email_timestamp_packed_bytes < max_header_bytes);
+    // VENMO SEND AMOUNT REGEX: [x]
+    var max_email_amount_len = 7;
+    var max_email_amount_packed_bytes = count_packed(max_email_amount_len, pack_size);
+    assert(max_email_amount_packed_bytes < max_header_bytes);
 
-    signal input email_timestamp_idx;
-    signal output reveal_email_timestamp_packed[max_email_timestamp_packed_bytes]; // packed into 7-bytes. TODO: make this rotate to take up even less space
+    signal input venmo_amount_idx;
+    signal output reveal_email_amount_packed[max_email_amount_packed_bytes]; // packed into 7-bytes. TODO: make this rotate to take up even less space
 
-    signal timestamp_regex_out, timestamp_regex_reveal[max_header_bytes];
-    (timestamp_regex_out, timestamp_regex_reveal) <== VenmoTimestampRegex(max_header_bytes)(in_padded);
-    timestamp_regex_out === 1;
+    signal amount_regex_out, amount_regex_reveal[max_header_bytes];
+    (amount_regex_out, amount_regex_reveal) <== VenmoAmountRegex(max_header_bytes)(in_padded);
+    amount_regex_out === 1;
 
-    reveal_email_timestamp_packed <== ShiftAndPack(max_header_bytes, max_email_timestamp_len, pack_size)(timestamp_regex_reveal, email_timestamp_idx);
+    reveal_email_amount_packed <== ShiftAndPack(max_header_bytes, max_email_amount_len, pack_size)(amount_regex_reveal, venmo_amount_idx);
+
+    // VENMO SEND OFFRAMPER ID REGEX: [x]
+    var max_venmo_send_len = 21;
+    var max_venmo_send_packed_bytes = count_packed(max_venmo_send_len, pack_size); // ceil(max_num_bytes / 7)
     
-    
-    // VENMO RECEIVE ONRAMPER ID REGEX: [x]
-    var max_venmo_receive_len = 21;
-    var max_venmo_receive_packed_bytes = count_packed(max_venmo_receive_len, pack_size); // ceil(max_num_bytes / 7)
-    
-    signal input venmo_receive_id_idx;
-    signal output reveal_venmo_receive_packed[max_venmo_receive_packed_bytes];
+    signal input venmo_send_id_idx;
+    signal output reveal_venmo_send_packed[max_venmo_send_packed_bytes];
 
-    signal (venmo_receive_regex_out, venmo_receive_regex_reveal[max_body_bytes]) <== VenmoReceiveId(max_body_bytes)(in_body_padded);
+    signal (venmo_send_regex_out, venmo_send_regex_reveal[max_body_bytes]) <== VenmoSendId(max_body_bytes)(in_body_padded);
     // This ensures we found a match at least once (i.e. match count is not zero)
-    signal is_found_venmo_receive <== IsZero()(venmo_receive_regex_out);
-    is_found_venmo_receive === 0;
+    signal is_found_venmo_send <== IsZero()(venmo_send_regex_out);
+    is_found_venmo_send === 0;
 
     // PACKING: 16,800 constraints (Total: [x])
-    reveal_venmo_receive_packed <== ShiftAndPack(max_body_bytes, max_venmo_receive_len, pack_size)(venmo_receive_regex_reveal, venmo_receive_id_idx);
+    reveal_venmo_send_packed <== ShiftAndPack(max_body_bytes, max_venmo_send_len, pack_size)(venmo_send_regex_reveal, venmo_send_id_idx);
 
     // TODO: Nullifier
     // TODO: Order ID
@@ -157,4 +156,4 @@ template VenmoReceiveEmail(max_header_bytes, max_body_bytes, n, k, pack_size, ex
 // * pack_size = 7 is the number of bytes that can fit into a 255ish bit signal (can increase later)
 // * expose_from = 0 is whether to expose the from email address
 // * expose_to = 0 is whether to expose the to email (not recommended)
-component main { public [ modulus, address ] } = VenmoReceiveEmail(1024, 6400, 121, 17, 7, 0, 0);
+component main { public [ modulus, address ] } = VenmoSendEmail(1024, 5952, 121, 17, 7, 0, 0);

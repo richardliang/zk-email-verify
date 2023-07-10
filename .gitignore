@@ -68,6 +68,7 @@ circuits/regexes/subject_regex*
 *email_cache.json
 *input.json
 dizkus-scripts/*input.json
+dizkus-scripts/*build*
 circuits/example
 circuits/*.json
 generate_input_log.txt
