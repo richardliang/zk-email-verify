@@ -134,15 +134,26 @@ template VenmoSendEmail(max_header_bytes, max_body_bytes, n, k, pack_size, expos
     signal output reveal_venmo_send_packed[max_venmo_send_packed_bytes];
 
     signal (venmo_send_regex_out, venmo_send_regex_reveal[max_body_bytes]) <== VenmoSendId(max_body_bytes)(in_body_padded);
-    // This ensures we found a match at least once (i.e. match count is not zero)
     signal is_found_venmo_send <== IsZero()(venmo_send_regex_out);
     is_found_venmo_send === 0;
 
     // PACKING: 16,800 constraints (Total: [x])
     reveal_venmo_send_packed <== ShiftAndPack(max_body_bytes, max_venmo_send_len, pack_size)(venmo_send_regex_reveal, venmo_send_id_idx);
 
-    // TODO: Nullifier
-    // TODO: Order ID
+    // NULLIFIER
+    // Packed SHA256 hash of the email header and body hash (the part that is signed upon)
+    signal output nullifier[msg_len];
+    for (var i = 0; i < msg_len; i++) {
+        nullifier[i] <== base_msg[i].out;
+    }
+
+    // The following signals do not take part in any computation, but tie the proof to a specific order_id & claim_id to prevent replay attacks and frontrunning.
+    signal input order_id;
+    signal input claim_id;
+    signal order_id_squared;
+    signal claim_id_squared;
+    order_id_squared <== order_id * order_id;
+    claim_id_squared <== claim_id * claim_id;
 }
 
 // In circom, all output signals of the main component are public (and cannot be made private), the input signals of the main component are private if not stated otherwise using the keyword public as above. The rest of signals are all private and cannot be made public.
