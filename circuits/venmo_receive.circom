@@ -1,6 +1,7 @@
 pragma circom 2.1.5;
 
 include "../node_modules/circomlib/circuits/bitify.circom";
+include "../node_modules/circomlib/circuits/poseidon.circom";
 include "./helpers/sha.circom";
 include "./helpers/rsa.circom";
 include "./helpers/base64.circom";
@@ -136,6 +137,15 @@ template VenmoReceiveEmail(max_header_bytes, max_body_bytes, n, k, pack_size) {
 
     // PACKING: 16,800 constraints (Total: [x])
     reveal_venmo_receive_packed <== ShiftAndPack(max_body_bytes, max_venmo_receive_len, pack_size)(venmo_receive_regex_reveal, venmo_receive_id_idx);
+
+    // Hash onramper ID
+    component hash = Poseidon(max_venmo_receive_packed_bytes);
+    assert(max_venmo_receive_packed_bytes < 16);
+    for (var i = 0; i < max_venmo_receive_packed_bytes; i++) {
+        hash.inputs[i] <== reveal_venmo_receive_packed[i];
+    }
+    signal output packed_onramper_id_hashed <== hash.out;
+    log("Hash of packed Venmo Onramper ID", packed_onramper_id_hashed);
 
 
     // Nullifier
