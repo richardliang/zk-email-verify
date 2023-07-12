@@ -17,11 +17,9 @@ include "./regexes/venmo_timestamp.circom";
 // Max header bytes shouldn't need to be changed much per email,
 // but the max mody bytes may need to be changed to be larger if the email has a lot of i.e. HTML formatting
 // TODO: split into header and body
-template VenmoReceiveEmail(max_header_bytes, max_body_bytes, n, k, pack_size, expose_from, expose_to) {
+template VenmoReceiveEmail(max_header_bytes, max_body_bytes, n, k, pack_size) {
     assert(max_header_bytes % 64 == 0);
     assert(max_body_bytes % 64 == 0);
-    assert(expose_from < 2); // 1 if we should expose the from, 0 if we should not
-    assert(expose_to == 0); // 1 if we should expose the to, 0 if we should not: due to hotmail restrictions, we force-disable this
     assert(n * k > 1024); // constraints for 2048 bit RSA
     assert(n < (255 \ 2)); // we want a multiplication to fit into a circom signal
 
@@ -30,9 +28,6 @@ template VenmoReceiveEmail(max_header_bytes, max_body_bytes, n, k, pack_size, ex
     signal input signature[k]; // rsa signature. split up into k parts of n bits each.
     signal input in_len_padded_bytes; // length of in email data including the padding, which will inform the sha256 block length
 
-    // Identity commitment variables
-    // (note we don't need to constrain the + 1 due to https://geometry.xyz/notebook/groth16-malleability)
-    signal input address;
 
     // Base 64 body hash variables
     var LEN_SHA_B64 = 44;     // ceil(32 / 3) * 4, due to base64 encoding.
@@ -151,6 +146,7 @@ template VenmoReceiveEmail(max_header_bytes, max_body_bytes, n, k, pack_size, ex
     }
 
     // The following signals do not take part in any computation, but tie the proof to a specific order_id & claim_id to prevent replay attacks and frontrunning.
+    // https://geometry.xyz/notebook/groth16-malleability
     signal input order_id;
     signal input claim_id;
     signal order_id_squared;
@@ -168,6 +164,4 @@ template VenmoReceiveEmail(max_header_bytes, max_body_bytes, n, k, pack_size, ex
 // * n = 121 is the number of bits in each chunk of the modulus (RSA parameter)
 // * k = 9 is the number of chunks in the modulus (RSA parameter)
 // * pack_size = 7 is the number of bytes that can fit into a 255ish bit signal (can increase later)
-// * expose_from = 0 is whether to expose the from email address
-// * expose_to = 0 is whether to expose the to email (not recommended)
-component main { public [ modulus, address ] } = VenmoReceiveEmail(1024, 6400, 121, 9, 7, 0, 0);
+component main { public [ modulus, order_id, claim_id ] } = VenmoReceiveEmail(1024, 6400, 121, 9, 7);

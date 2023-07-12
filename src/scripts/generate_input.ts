@@ -229,12 +229,11 @@ export async function getCircuitInputs(
       precomputed_sha,
       in_body_padded,
       in_body_len_padded_bytes,
-      venmo_receive_id_idx,
-      address,
-      // address_plus_one,
       body_hash_idx,
+      // venmo specific indices
       email_timestamp_idx,
-      // email_from_idx,
+      venmo_receive_id_idx,
+      // IDs
       order_id,
       claim_id
     };
@@ -253,12 +252,11 @@ export async function getCircuitInputs(
       precomputed_sha,
       in_body_padded,
       in_body_len_padded_bytes,
-      venmo_send_id_idx,
-      venmo_amount_idx,
-      address,
-      // address_plus_one,
       body_hash_idx,
-      // email_from_idx,
+      // venmo specific indices
+      venmo_amount_idx,
+      venmo_send_id_idx,
+      // IDs
       order_id,
       claim_id
     };
