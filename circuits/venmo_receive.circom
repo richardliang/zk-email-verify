@@ -124,6 +124,7 @@ template VenmoReceiveEmail(max_header_bytes, max_body_bytes, n, k, pack_size, ex
     (timestamp_regex_out, timestamp_regex_reveal) <== VenmoTimestampRegex(max_header_bytes)(in_padded);
     timestamp_regex_out === 1;
 
+    // PACKING: 16,800 constraints (Total: [x])
     reveal_email_timestamp_packed <== ShiftAndPack(max_header_bytes, max_email_timestamp_len, pack_size)(timestamp_regex_reveal, email_timestamp_idx);
     
     
@@ -135,15 +136,19 @@ template VenmoReceiveEmail(max_header_bytes, max_body_bytes, n, k, pack_size, ex
     signal output reveal_venmo_receive_packed[max_venmo_receive_packed_bytes];
 
     signal (venmo_receive_regex_out, venmo_receive_regex_reveal[max_body_bytes]) <== VenmoReceiveId(max_body_bytes)(in_body_padded);
-    // This ensures we found a match at least once (i.e. match count is not zero)
     signal is_found_venmo_receive <== IsZero()(venmo_receive_regex_out);
     is_found_venmo_receive === 0;
 
     // PACKING: 16,800 constraints (Total: [x])
     reveal_venmo_receive_packed <== ShiftAndPack(max_body_bytes, max_venmo_receive_len, pack_size)(venmo_receive_regex_reveal, venmo_receive_id_idx);
 
-    // TODO: Nullifier
-    // TODO: Order ID
+
+    // Nullifier
+    // Packed SHA256 hash of the email header and body hash (the part that is signed upon)
+    signal output nullifier[msg_len];
+    for (var i = 0; i < msg_len; i++) {
+        nullifier[i] <== base_msg[i].out;
+    }
 }
 
 // In circom, all output signals of the main component are public (and cannot be made private), the input signals of the main component are private if not stated otherwise using the keyword public as above. The rest of signals are all private and cannot be made public.
