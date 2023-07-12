@@ -1,6 +1,7 @@
 pragma circom 2.1.5;
 
 include "../node_modules/circomlib/circuits/bitify.circom";
+include "../node_modules/circomlib/circuits/poseidon.circom";
 include "./helpers/sha.circom";
 include "./helpers/rsa.circom";
 include "./helpers/base64.circom";
@@ -17,12 +18,10 @@ include "./regexes/venmo_timestamp.circom";
 // Max header bytes shouldn't need to be changed much per email,
 // but the max mody bytes may need to be changed to be larger if the email has a lot of i.e. HTML formatting
 // TODO: split into header and body
-template VenmoReceiveEmail(max_header_bytes, max_body_bytes, n, k, pack_size, expose_from, expose_to) {
+template VenmoReceiveEmail(max_header_bytes, max_body_bytes, n, k, pack_size) {
     assert(max_header_bytes % 64 == 0);
     assert(max_body_bytes % 64 == 0);
-    assert(expose_from < 2); // 1 if we should expose the from, 0 if we should not
-    assert(expose_to == 0); // 1 if we should expose the to, 0 if we should not: due to hotmail restrictions, we force-disable this
-    assert(n * k > 2048); // constraints for 2048 bit RSA
+    assert(n * k > 1024); // constraints for 2048 bit RSA
     assert(n < (255 \ 2)); // we want a multiplication to fit into a circom signal
 
     signal input in_padded[max_header_bytes]; // prehashed email data, includes up to 512 + 64? bytes of padding pre SHA256, and padded with lots of 0s at end after the length
@@ -30,9 +29,6 @@ template VenmoReceiveEmail(max_header_bytes, max_body_bytes, n, k, pack_size, ex
     signal input signature[k]; // rsa signature. split up into k parts of n bits each.
     signal input in_len_padded_bytes; // length of in email data including the padding, which will inform the sha256 block length
 
-    // Identity commitment variables
-    // (note we don't need to constrain the + 1 due to https://geometry.xyz/notebook/groth16-malleability)
-    signal input address;
 
     // Base 64 body hash variables
     var LEN_SHA_B64 = 44;     // ceil(32 / 3) * 4, due to base64 encoding.
@@ -124,6 +120,7 @@ template VenmoReceiveEmail(max_header_bytes, max_body_bytes, n, k, pack_size, ex
     (timestamp_regex_out, timestamp_regex_reveal) <== VenmoTimestampRegex(max_header_bytes)(in_padded);
     timestamp_regex_out === 1;
 
+    // PACKING: 16,800 constraints (Total: [x])
     reveal_email_timestamp_packed <== ShiftAndPack(max_header_bytes, max_email_timestamp_len, pack_size)(timestamp_regex_reveal, email_timestamp_idx);
     
     
@@ -135,15 +132,37 @@ template VenmoReceiveEmail(max_header_bytes, max_body_bytes, n, k, pack_size, ex
     signal output reveal_venmo_receive_packed[max_venmo_receive_packed_bytes];
 
     signal (venmo_receive_regex_out, venmo_receive_regex_reveal[max_body_bytes]) <== VenmoReceiveId(max_body_bytes)(in_body_padded);
-    // This ensures we found a match at least once (i.e. match count is not zero)
     signal is_found_venmo_receive <== IsZero()(venmo_receive_regex_out);
     is_found_venmo_receive === 0;
 
     // PACKING: 16,800 constraints (Total: [x])
     reveal_venmo_receive_packed <== ShiftAndPack(max_body_bytes, max_venmo_receive_len, pack_size)(venmo_receive_regex_reveal, venmo_receive_id_idx);
 
-    // TODO: Nullifier
-    // TODO: Order ID
+    // Hash onramper ID
+    component hash = Poseidon(max_venmo_receive_packed_bytes);
+    assert(max_venmo_receive_packed_bytes < 16);
+    for (var i = 0; i < max_venmo_receive_packed_bytes; i++) {
+        hash.inputs[i] <== reveal_venmo_receive_packed[i];
+    }
+    signal output packed_onramper_id_hashed <== hash.out;
+    log("Hash of packed Venmo Onramper ID", packed_onramper_id_hashed);
+
+
+    // Nullifier
+    // Packed SHA256 hash of the email header and body hash (the part that is signed upon)
+    signal output nullifier[msg_len];
+    for (var i = 0; i < msg_len; i++) {
+        nullifier[i] <== base_msg[i].out;
+    }
+
+    // The following signals do not take part in any computation, but tie the proof to a specific order_id & claim_id to prevent replay attacks and frontrunning.
+    // https://geometry.xyz/notebook/groth16-malleability
+    signal input order_id;
+    signal input claim_id;
+    signal order_id_squared;
+    signal claim_id_squared;
+    order_id_squared <== order_id * order_id;
+    claim_id_squared <== claim_id * claim_id;
 }
 
 // In circom, all output signals of the main component are public (and cannot be made private), the input signals of the main component are private if not stated otherwise using the keyword public as above. The rest of signals are all private and cannot be made public.
@@ -153,8 +172,6 @@ template VenmoReceiveEmail(max_header_bytes, max_body_bytes, n, k, pack_size, ex
 // * max_header_bytes = 1024 is the max number of bytes in the header
 // * max_body_bytes = 6400 is the max number of bytes in the body after precomputed slice
 // * n = 121 is the number of bits in each chunk of the modulus (RSA parameter)
-// * k = 17 is the number of chunks in the modulus (RSA parameter)
+// * k = 9 is the number of chunks in the modulus (RSA parameter)
 // * pack_size = 7 is the number of bytes that can fit into a 255ish bit signal (can increase later)
-// * expose_from = 0 is whether to expose the from email address
-// * expose_to = 0 is whether to expose the to email (not recommended)
-component main { public [ modulus, address ] } = VenmoReceiveEmail(1024, 6400, 121, 17, 7, 0, 0);
+component main { public [ modulus, order_id, claim_id ] } = VenmoReceiveEmail(1024, 6400, 121, 9, 7);

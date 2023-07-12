@@ -52,6 +52,8 @@ export interface ICircuitInputs {
   email_timestamp_idx?: string;
   venmo_send_id_idx?: string;
   venmo_amount_idx?: string;
+  order_id?: string;
+  claim_id?: string;
 
   // subject commands only
   command_idx?: string;
@@ -116,6 +118,8 @@ export async function getCircuitInputs(
   message: Buffer,
   body: Buffer,
   body_hash: string,
+  order_id: string,
+  claim_id: string,
   eth_address: string,
   circuit: CircuitType
 ): Promise<{
@@ -129,14 +133,14 @@ export async function getCircuitInputs(
 
   let MAX_BODY_PADDED_BYTES_FOR_EMAIL_TYPE = MAX_BODY_PADDED_BYTES;
   let STRING_PRESELECTOR_FOR_EMAIL_TYPE = STRING_PRESELECTOR;
-  
+
   // Update preselector string based on circuit type
   if (circuit === CircuitType.EMAIL_VENMO_RECEIVE) {
     STRING_PRESELECTOR_FOR_EMAIL_TYPE = "\r\ntps://venmo.com/code?user_id=3D";
-    MAX_BODY_PADDED_BYTES_FOR_EMAIL_TYPE = 6400;
+    MAX_BODY_PADDED_BYTES_FOR_EMAIL_TYPE = 6400;  // 6200 length + 200 chars long custom message
   } else if (circuit === CircuitType.EMAIL_VENMO_SEND) {
     STRING_PRESELECTOR_FOR_EMAIL_TYPE = "                    href=3D\"https://venmo.com/code?user_id=3D";
-    MAX_BODY_PADDED_BYTES_FOR_EMAIL_TYPE = 6400;
+    MAX_BODY_PADDED_BYTES_FOR_EMAIL_TYPE = 6016;  // 5708 length + 300 chars long custom message
   }
 
   // Derive modulus from signature
@@ -200,10 +204,10 @@ export async function getCircuitInputs(
 
   let raw_header = Buffer.from(prehash_message_string).toString();
   const email_from_idx = raw_header.length - trimStrByStr(trimStrByStr(raw_header, "from:"), "<").length;
-  
+
   let email_subject = trimStrByStr(raw_header, "\r\nsubject:");
   //in javascript, give me a function that extracts the first word in a string, everything before the first space
-  
+
   if (circuit === CircuitType.RSA) {
     circuitInputs = {
       modulus,
@@ -214,9 +218,9 @@ export async function getCircuitInputs(
     const RECEIVE_ID_SELECTOR = Buffer.from(STRING_PRESELECTOR_FOR_EMAIL_TYPE);
     const venmo_receive_id_idx = (Buffer.from(bodyRemaining).indexOf(RECEIVE_ID_SELECTOR) + RECEIVE_ID_SELECTOR.length).toString();
     const email_timestamp_idx = (raw_header.length - trimStrByStr(raw_header, "t=").length).toString();
-    
+
     console.log("Indexes into for venmo receive email are: ", email_timestamp_idx, venmo_receive_id_idx);
-    
+
     circuitInputs = {
       in_padded,
       modulus,
@@ -225,12 +229,13 @@ export async function getCircuitInputs(
       precomputed_sha,
       in_body_padded,
       in_body_len_padded_bytes,
-      venmo_receive_id_idx,
-      address,
-      // address_plus_one,
       body_hash_idx,
+      // venmo specific indices
       email_timestamp_idx,
-      // email_from_idx,
+      venmo_receive_id_idx,
+      // IDs
+      order_id,
+      claim_id
     };
   } else if (circuit === CircuitType.EMAIL_VENMO_SEND) {
     const SEND_ID_SELECTOR = Buffer.from(STRING_PRESELECTOR_FOR_EMAIL_TYPE);
@@ -238,7 +243,7 @@ export async function getCircuitInputs(
 
     const venmo_amount_idx = (raw_header.length - trimStrByStr(email_subject, "$").length).toString();
     console.log("Indexes into for venmo send email are: ", venmo_amount_idx, venmo_send_id_idx);
-    
+
     circuitInputs = {
       in_padded,
       modulus,
@@ -247,12 +252,13 @@ export async function getCircuitInputs(
       precomputed_sha,
       in_body_padded,
       in_body_len_padded_bytes,
-      venmo_send_id_idx,
-      venmo_amount_idx,
-      address,
-      // address_plus_one,
       body_hash_idx,
-      // email_from_idx,
+      // venmo specific indices
+      venmo_amount_idx,
+      venmo_send_id_idx,
+      // IDs
+      order_id,
+      claim_id
     };
   } else if (circuit === CircuitType.EMAIL_TWITTER) {
     const USERNAME_SELECTOR = Buffer.from(STRING_PRESELECTOR_FOR_EMAIL_TYPE);
@@ -326,7 +332,9 @@ export async function generate_inputs(
   raw_email: Buffer | string,
   eth_address: string,
   type: CircuitType = CircuitType.EMAIL_SUBJECT,
-  nonce_raw: number | null | string = null
+  nonce_raw: number | null | string = null,
+  order_id: string,
+  claim_id: string
 ): Promise<ICircuitInputs> {
   const nonce = typeof nonce_raw == "string" ? nonce_raw.trim() : nonce_raw;
 
@@ -370,7 +378,7 @@ export async function generate_inputs(
   const pubKeyData = pki.publicKeyFromPem(pubkey.toString());
   // const pubKeyData = CryptoJS.parseKey(pubkey.toString(), 'pem');
   let modulus = BigInt(pubKeyData.n.toString());
-  let fin_result = await getCircuitInputs(sig, modulus, message, body, body_hash, eth_address, type);
+  let fin_result = await getCircuitInputs(sig, modulus, message, body, body_hash, order_id, claim_id, eth_address, type);
   return fin_result.circuitInputs;
 }
 
@@ -396,7 +404,7 @@ async function test_generate(writeToFile: boolean = true, email_file_name: strin
   const { email_file, nonce } = await getArgs(email_file_name);
   const email = fs.readFileSync(email_file.trim());
   console.log(email);
-  const gen_inputs = await generate_inputs(email, "0x0000000000000000000000000000000000000000", type, nonce);
+  const gen_inputs = await generate_inputs(email, "0x0000000000000000000000000000000000000000", type, nonce, "1", "0");
   console.log(JSON.stringify(gen_inputs));
   if (writeToFile) {
     const file_dir = email_file.substring(0, email_file.lastIndexOf("/") + 1);
