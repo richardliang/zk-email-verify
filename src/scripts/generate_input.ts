@@ -272,7 +272,7 @@ export async function getCircuitInputs(
     const SEND_ID_SELECTOR = Buffer.from("\r\number</strong><br>");
     const revolut_send_id_idx = (Buffer.from(bodyRemaining).indexOf(SEND_ID_SELECTOR) + SEND_ID_SELECTOR.length).toString();
 
-    console.log("Indexes into for revolut receive email are: ", revolut_amount_idx, revolut_send_id_idx);
+    console.log("Indexes into for revolut send email are: ", revolut_amount_idx, revolut_send_id_idx);
 
     circuitInputs = {
       in_padded,
@@ -288,7 +288,7 @@ export async function getCircuitInputs(
       revolut_send_id_idx,
       // IDs
       order_id,
-      claim_id
+      // claim_id
     };
   } else if (circuit === CircuitType.EMAIL_TWITTER) {
     const USERNAME_SELECTOR = Buffer.from(STRING_PRESELECTOR_FOR_EMAIL_TYPE);
