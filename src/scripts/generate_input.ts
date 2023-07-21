@@ -52,6 +52,8 @@ export interface ICircuitInputs {
   email_timestamp_idx?: string;
   venmo_send_id_idx?: string;
   venmo_amount_idx?: string;
+  revolut_amount_idx?: string;
+  revolut_send_id_idx?: string;
   order_id?: string;
   claim_id?: string;
 
@@ -74,6 +76,7 @@ export enum CircuitType {
   EMAIL_TWITTER = "email_twitter",
   EMAIL_VENMO_RECEIVE = "email_venmo_receive",
   EMAIL_VENMO_SEND = "email_venmo_send",
+  EMAIL_REVOLUT_SEND = "email_revolut_send",
   EMAIL_SUBJECT = "email_subject",
 }
 
@@ -141,6 +144,9 @@ export async function getCircuitInputs(
   } else if (circuit === CircuitType.EMAIL_VENMO_SEND) {
     STRING_PRESELECTOR_FOR_EMAIL_TYPE = "                    href=3D\"https://venmo.com/code?user_id=3D";
     MAX_BODY_PADDED_BYTES_FOR_EMAIL_TYPE = 6016;  // 5708 length + 300 chars long custom message
+  } else if (circuit === CircuitType.EMAIL_REVOLUT_SEND) {
+    STRING_PRESELECTOR_FOR_EMAIL_TYPE = "You sent =C2=A3";
+    MAX_BODY_PADDED_BYTES_FOR_EMAIL_TYPE = 11712;
   }
 
   // Derive modulus from signature
@@ -256,6 +262,30 @@ export async function getCircuitInputs(
       // venmo specific indices
       venmo_amount_idx,
       venmo_send_id_idx,
+      // IDs
+      order_id,
+      claim_id
+    };
+  } else if (circuit === CircuitType.EMAIL_REVOLUT_SEND) {
+    const SEND_AMOUNT_SELECTOR = Buffer.from(STRING_PRESELECTOR_FOR_EMAIL_TYPE);
+    const revolut_amount_idx = (Buffer.from(bodyRemaining).indexOf(SEND_AMOUNT_SELECTOR) + SEND_AMOUNT_SELECTOR.length).toString();
+    const SEND_ID_SELECTOR = Buffer.from("\r\number</strong><br>");
+    const revolut_send_id_idx = (Buffer.from(bodyRemaining).indexOf(SEND_ID_SELECTOR) + SEND_ID_SELECTOR.length).toString();
+
+    console.log("Indexes into for revolut receive email are: ", revolut_amount_idx, revolut_send_id_idx);
+
+    circuitInputs = {
+      in_padded,
+      modulus,
+      signature,
+      in_len_padded_bytes,
+      precomputed_sha,
+      in_body_padded,
+      in_body_len_padded_bytes,
+      body_hash_idx,
+      // revolut specific indices
+      revolut_amount_idx,
+      revolut_send_id_idx,
       // IDs
       order_id,
       claim_id
